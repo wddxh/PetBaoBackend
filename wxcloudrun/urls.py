@@ -14,13 +14,33 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+from rest_framework.routers import DefaultRouter
 from wxcloudrun import views
-from django.conf.urls import url
-
-urlpatterns = (
-    # 计数器接口
-    url(r'^^api/count(/)?$', views.counter),
-
-    # 获取主页
-    url(r'(/)?$', views.index),
+from wxcloudrun.api_views import (
+    wechat_login, UserViewSet, ProductCategoryViewSet,
+    ProductViewSet, OrderViewSet, ChatMessageViewSet
 )
+
+# Create router for ViewSets
+router = DefaultRouter()
+router.register(r'users', UserViewSet, basename='user')
+router.register(r'categories', ProductCategoryViewSet, basename='category')
+router.register(r'products', ProductViewSet, basename='product')
+router.register(r'orders', OrderViewSet, basename='order')
+router.register(r'messages', ChatMessageViewSet, basename='message')
+
+urlpatterns = [
+    # API routes
+    path('api/auth/wechat-login/', wechat_login, name='wechat-login'),
+    path('api/', include(router.urls)),
+    
+    # Legacy routes
+    path('', views.index, name='index'),
+]
+
+# Serve media files in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
