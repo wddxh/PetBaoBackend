@@ -218,8 +218,8 @@ CORS_ALLOW_CREDENTIALS = True
 # REST Framework Settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        # 云托管模式不需要 JWT 认证，使用中间件自动认证
-        # 'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # 云托管认证：使用中间件设置的用户
+        'wxcloudrun.authentication.CloudbaseAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         # 默认允许所有访问，在各个 ViewSet 中单独控制权限

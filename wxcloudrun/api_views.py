@@ -205,6 +205,14 @@ class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all()
     permission_classes = [IsAuthenticated]
     
+    def check_permissions(self, request):
+        """重写权限检查以添加调试日志"""
+        print(f"OrderViewSet.check_permissions: user={request.user}, type={type(request.user).__name__}, is_authenticated={request.user.is_authenticated}")
+        print(f"OrderViewSet.check_permissions: has backend={hasattr(request.user, 'backend')}")
+        if hasattr(request.user, 'backend'):
+            print(f"OrderViewSet.check_permissions: backend={request.user.backend}")
+        super().check_permissions(request)
+    
     def get_serializer_class(self):
         if self.action == 'list':
             return OrderListSerializer
