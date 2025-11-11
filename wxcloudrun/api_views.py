@@ -35,11 +35,15 @@ def wechat_login(request):
     openid = request.headers.get('X-WX-OPENID')
     unionid = request.headers.get('X-WX-UNIONID', '')
     
+    # 将空字符串转换为 None，避免唯一约束冲突
+    if not unionid:
+        unionid = None
+    
     if not openid:
         return Response({'error': '缺少云托管环境信息 (X-WX-OPENID)'}, 
                        status=status.HTTP_400_BAD_REQUEST)
     
-    print(f"云托管登录, openid: {openid}")
+    print(f"云托管登录, openid: {openid}, unionid: {unionid}")
     
     try:
         # Get or create user
