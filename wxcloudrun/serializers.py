@@ -1,8 +1,24 @@
 from rest_framework import serializers
 from .models import (
     User, ProductCategory, Product, ProductImage, ProductVideo,
-    Order, ChatMessage
+    Order, ChatMessage, GeneTag, ProductGeneTag, Species
 )
+
+
+class SpeciesSerializer(serializers.ModelSerializer):
+    """物种序列化器"""
+    class Meta:
+        model = Species
+        fields = ['id', 'name', 'scientific_name', 'category', 'description', 'image_url', 'sort_order']
+
+
+class GeneTagSerializer(serializers.ModelSerializer):
+    """基因标签序列化器"""
+    species_name = serializers.CharField(source='species.name', read_only=True)
+    
+    class Meta:
+        model = GeneTag
+        fields = ['id', 'name', 'species', 'species_name', 'description', 'color', 'sort_order']
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -39,55 +55,76 @@ class ProductListSerializer(serializers.ModelSerializer):
     """产品列表序列化器（简略信息）"""
     seller_name = serializers.CharField(source='seller.nickname', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
+    species_name = serializers.CharField(source='species.name', read_only=True)
     first_image = serializers.SerializerMethodField()
+    gene_tags = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
-        fields = ['id', 'title', 'species', 'morph', 'price', 'status', 
-                  'seller_name', 'category_name', 'first_image', 'view_count',
+        fields = ['id', 'title', 'species', 'species_name', 'morph', 'price', 'status', 
+                  'seller_name', 'category_name', 'first_image', 'gene_tags', 'view_count',
                   'created_at']
     
     def get_first_image(self, obj):
         first_image = obj.images.first()
         return first_image.image_url if first_image else None
+    
+    def get_gene_tags(self, obj):
+        """获取商品的基因标签"""
+        product_gene_tags = obj.gene_tags.select_related('gene_tag').all()
+        return GeneTagSerializer([pgt.gene_tag for pgt in product_gene_tags], many=True).data
 
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     """产品详情序列化器（完整信息）"""
     seller = UserSerializer(read_only=True)
     category = ProductCategorySerializer(read_only=True)
+    species_info = SpeciesSerializer(source='species', read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     videos = ProductVideoSerializer(many=True, read_only=True)
+    gene_tags = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
         fields = ['id', 'seller', 'category', 'title', 'description', 
-                  'species', 'morph', 'age', 'sex', 'price', 'status',
-                  'images', 'videos', 'view_count', 'created_at', 'updated_at']
+                  'species', 'species_info', 'morph', 'age', 'sex', 'price', 'status',
+                  'images', 'videos', 'gene_tags', 'view_count', 'created_at', 'updated_at']
         read_only_fields = ['id', 'seller', 'view_count', 'created_at', 'updated_at']
+    
+    def get_gene_tags(self, obj):
+        """获取商品的基因标签"""
+        product_gene_tags = obj.gene_tags.select_related('gene_tag').all()
+        return GeneTagSerializer([pgt.gene_tag for pgt in product_gene_tags], many=True).data
 
 
 class ProductCreateSerializer(serializers.ModelSerializer):
     """产品创建序列化器"""
     images = serializers.ListField(
-        child=serializers.URLField(),
+        child=serializers.CharField(max_length=500),  # 改为 CharField 以支持 cloud:// 格式
         write_only=True,
         required=False
     )
     videos = serializers.ListField(
-        child=serializers.URLField(),
+        child=serializers.CharField(max_length=500),  # 改为 CharField 以支持 cloud:// 格式
         write_only=True,
         required=False
+    )
+    gene_tag_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        help_text='基因标签ID列表'
     )
     
     class Meta:
         model = Product
         fields = ['title', 'description', 'species', 'morph', 'age', 'sex', 
-                  'price', 'category', 'images', 'videos']
+                  'price', 'category', 'images', 'videos', 'gene_tag_ids']
     
     def create(self, validated_data):
         images_data = validated_data.pop('images', [])
         videos_data = validated_data.pop('videos', [])
+        gene_tag_ids = validated_data.pop('gene_tag_ids', [])
         
         # Create product
         product = Product.objects.create(**validated_data)
@@ -108,7 +145,63 @@ class ProductCreateSerializer(serializers.ModelSerializer):
                 sort_order=idx
             )
         
+        # Create gene tag associations
+        for tag_id in gene_tag_ids:
+            try:
+                gene_tag = GeneTag.objects.get(id=tag_id, is_active=True)
+                ProductGeneTag.objects.create(product=product, gene_tag=gene_tag)
+            except GeneTag.DoesNotExist:
+                pass  # 忽略不存在的标签
+        
         return product
+    
+    def update(self, instance, validated_data):
+        images_data = validated_data.pop('images', None)
+        videos_data = validated_data.pop('videos', None)
+        gene_tag_ids = validated_data.pop('gene_tag_ids', None)
+        
+        # Update basic fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Update images if provided
+        if images_data is not None:
+            # Delete old images
+            instance.images.all().delete()
+            # Create new images
+            for idx, image_url in enumerate(images_data):
+                ProductImage.objects.create(
+                    product=instance,
+                    image_url=image_url,
+                    sort_order=idx
+                )
+        
+        # Update videos if provided
+        if videos_data is not None:
+            # Delete old videos
+            instance.videos.all().delete()
+            # Create new videos
+            for idx, video_url in enumerate(videos_data):
+                ProductVideo.objects.create(
+                    product=instance,
+                    video_url=video_url,
+                    sort_order=idx
+                )
+        
+        # Update gene tags if provided
+        if gene_tag_ids is not None:
+            # Delete old associations
+            instance.gene_tags.all().delete()
+            # Create new associations
+            for tag_id in gene_tag_ids:
+                try:
+                    gene_tag = GeneTag.objects.get(id=tag_id, is_active=True)
+                    ProductGeneTag.objects.create(product=instance, gene_tag=gene_tag)
+                except GeneTag.DoesNotExist:
+                    pass  # 忽略不存在的标签
+        
+        return instance
 
 
 class OrderListSerializer(serializers.ModelSerializer):

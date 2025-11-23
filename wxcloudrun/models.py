@@ -44,6 +44,53 @@ class ProductCategory(models.Model):
         return self.name
 
 
+# Species Model (物种管理表)
+class Species(models.Model):
+    """物种表 - 标准化物种管理"""
+    name = models.CharField(max_length=100, unique=True, verbose_name='物种名称')
+    scientific_name = models.CharField(max_length=200, null=True, blank=True, verbose_name='学名')
+    category = models.ForeignKey(ProductCategory, on_delete=models.SET_NULL, null=True, blank=True, 
+                                  related_name='species', verbose_name='分类')
+    description = models.TextField(null=True, blank=True, verbose_name='物种描述')
+    image_url = models.URLField(max_length=500, null=True, blank=True, verbose_name='物种图片')
+    sort_order = models.IntegerField(default=0, verbose_name='排序')
+    is_active = models.BooleanField(default=True, verbose_name='是否启用')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        db_table = 'species'
+        verbose_name = '物种'
+        verbose_name_plural = '物种'
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+# Gene Tag Model (基因标签主表)
+class GeneTag(models.Model):
+    """基因标签表 - 可扩展的标签系统"""
+    name = models.CharField(max_length=100, verbose_name='标签名称')
+    species = models.ForeignKey(Species, on_delete=models.CASCADE, related_name='gene_tags', verbose_name='适用物种')
+    description = models.TextField(null=True, blank=True, verbose_name='标签描述')
+    color = models.CharField(max_length=20, null=True, blank=True, verbose_name='显示颜色')
+    sort_order = models.IntegerField(default=0, verbose_name='排序')
+    is_active = models.BooleanField(default=True, verbose_name='是否启用')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        db_table = 'gene_tags'
+        verbose_name = '基因标签'
+        verbose_name_plural = '基因标签'
+        ordering = ['species', 'sort_order', 'name']
+        unique_together = [['name', 'species']]  # 同一物种下标签名称唯一
+
+    def __str__(self):
+        return f"{self.species.name} - {self.name}"
+
+
 # Product Model
 class Product(models.Model):
     """产品表"""
@@ -65,7 +112,7 @@ class Product(models.Model):
     
     title = models.CharField(max_length=200, verbose_name='标题')
     description = models.TextField(verbose_name='描述')
-    species = models.CharField(max_length=100, verbose_name='物种')
+    species = models.ForeignKey(Species, on_delete=models.SET_NULL, null=True, related_name='products', verbose_name='物种')
     morph = models.CharField(max_length=200, null=True, blank=True, verbose_name='品系/基因')
     age = models.CharField(max_length=50, null=True, blank=True, verbose_name='年龄')
     sex = models.CharField(max_length=10, choices=SEX_CHOICES, default='unknown', verbose_name='性别')
@@ -122,6 +169,23 @@ class ProductVideo(models.Model):
 
     def __str__(self):
         return f"{self.product.title} - Video {self.sort_order}"
+
+
+# Product Gene Tags (商品-基因标签关联表)
+class ProductGeneTag(models.Model):
+    """商品基因标签关联表 - 多对多关系"""
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='gene_tags', verbose_name='产品')
+    gene_tag = models.ForeignKey(GeneTag, on_delete=models.CASCADE, related_name='products', verbose_name='基因标签')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+
+    class Meta:
+        db_table = 'product_gene_tags'
+        verbose_name = '商品基因标签'
+        verbose_name_plural = '商品基因标签'
+        unique_together = [['product', 'gene_tag']]  # 同一商品不能重复添加同一标签
+
+    def __str__(self):
+        return f"{self.product.title} - {self.gene_tag.name}"
 
 
 # Order Model

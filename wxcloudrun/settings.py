@@ -77,7 +77,7 @@ if MYSQL_ADDRESS:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.mysql',
-            'NAME': os.environ.get("MYSQL_DATABASE", 'django_demo'),
+            'NAME': os.environ.get("MYSQL_DATABASE", 'petbaodb'),
             'USER': os.environ.get("MYSQL_USERNAME", 'root'),
             'HOST': MYSQL_ADDRESS.split(':')[0],
             'PORT': MYSQL_ADDRESS.split(':')[1],

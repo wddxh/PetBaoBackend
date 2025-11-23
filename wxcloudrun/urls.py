@@ -20,14 +20,16 @@ from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from wxcloudrun import views
 from wxcloudrun.api_views import (
-    wechat_login, UserViewSet, ProductCategoryViewSet,
-    ProductViewSet, OrderViewSet, ChatMessageViewSet
+    wechat_login, UserViewSet, ProductCategoryViewSet, SpeciesViewSet,
+    GeneTagViewSet, ProductViewSet, OrderViewSet, ChatMessageViewSet
 )
 
 # Create router for ViewSets
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'categories', ProductCategoryViewSet, basename='category')
+router.register(r'species', SpeciesViewSet, basename='species')
+router.register(r'gene-tags', GeneTagViewSet, basename='gene-tag')
 router.register(r'products', ProductViewSet, basename='product')
 router.register(r'orders', OrderViewSet, basename='order')
 router.register(r'messages', ChatMessageViewSet, basename='message')

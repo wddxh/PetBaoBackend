@@ -10,12 +10,13 @@ from django.db.models import Q
 
 from .models import (
     User, ProductCategory, Product, ProductImage, ProductVideo,
-    Order, ChatMessage
+    Order, ChatMessage, GeneTag, ProductGeneTag, Species
 )
 from .serializers import (
     UserSerializer, ProductCategorySerializer, ProductListSerializer,
     ProductDetailSerializer, ProductCreateSerializer, OrderListSerializer,
-    OrderDetailSerializer, OrderCreateSerializer, ChatMessageSerializer
+    OrderDetailSerializer, OrderCreateSerializer, ChatMessageSerializer,
+    GeneTagSerializer, SpeciesSerializer
 )
 
 
@@ -106,6 +107,38 @@ class ProductCategoryViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
 
 
+# Species ViewSet
+class SpeciesViewSet(viewsets.ReadOnlyModelViewSet):
+    """物种视图集（只读）- 支持按分类筛选"""
+    queryset = Species.objects.filter(is_active=True)
+    serializer_class = SpeciesSerializer
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        """支持按分类筛选物种"""
+        queryset = super().get_queryset()
+        category = self.request.query_params.get('category', None)
+        if category:
+            queryset = queryset.filter(category=category)
+        return queryset
+
+
+# Gene Tag ViewSet
+class GeneTagViewSet(viewsets.ReadOnlyModelViewSet):
+    """基因标签视图集（只读）- 支持按物种筛选"""
+    queryset = GeneTag.objects.filter(is_active=True)
+    serializer_class = GeneTagSerializer
+    permission_classes = [AllowAny]
+    
+    def get_queryset(self):
+        """支持按物种ID筛选标签"""
+        queryset = super().get_queryset()
+        species_id = self.request.query_params.get('species', None)
+        if species_id:
+            queryset = queryset.filter(species_id=species_id)
+        return queryset
+
+
 # Product ViewSet
 class ProductViewSet(viewsets.ModelViewSet):
     """产品视图集"""
@@ -124,7 +157,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'list':
             return ProductListSerializer
-        elif self.action == 'create':
+        elif self.action in ['create', 'update', 'partial_update']:
             return ProductCreateSerializer
         return ProductDetailSerializer
     
@@ -179,6 +212,33 @@ class ProductViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(seller=self.request.user)
     
+    def create(self, request, *args, **kwargs):
+        """创建商品，添加详细日志"""
+        print(f"ProductViewSet.create: user={request.user}, is_authenticated={request.user.is_authenticated}")
+        print(f"ProductViewSet.create: request.data={request.data}")
+        
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            print(f"ProductViewSet.create: validation errors={serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    
+    def perform_update(self, serializer):
+        """更新商品时验证权限"""
+        product = self.get_object()
+        if product.seller != self.request.user:
+            raise PermissionError('只能修改自己发布的商品')
+        serializer.save()
+    
+    def perform_destroy(self, instance):
+        """删除商品时验证权限"""
+        if instance.seller != self.request.user:
+            raise PermissionError('只能删除自己发布的商品')
+        instance.delete()
+    
     def retrieve(self, request, *args, **kwargs):
         """获取产品详情，增加浏览次数"""
         instance = self.get_object()
@@ -196,6 +256,27 @@ class ProductViewSet(viewsets.ModelViewSet):
             serializer = ProductListSerializer(page, many=True)
             return self.get_paginated_response(serializer.data)
         serializer = ProductListSerializer(products, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def toggle_status(self, request, pk=None):
+        """切换商品上下架状态"""
+        product = self.get_object()
+        
+        # 验证权限
+        if product.seller != request.user:
+            return Response({'error': '只能操作自己发布的商品'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # 切换状态
+        if product.status == 'available':
+            product.status = 'offline'
+        elif product.status == 'offline':
+            product.status = 'available'
+        else:
+            return Response({'error': '当前商品状态不允许上下架'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        product.save()
+        serializer = ProductDetailSerializer(product)
         return Response(serializer.data)
 
 
