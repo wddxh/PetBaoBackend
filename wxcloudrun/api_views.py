@@ -148,7 +148,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         根据不同的操作设置不同的权限
         - list, retrieve: 允许匿名访问（浏览商品）
-        - create, update, delete: 需要认证
+        - create, update, delete, my_products, toggle_status: 需要认证
         """
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
@@ -249,8 +249,9 @@ class ProductViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def my_products(self, request):
-        """获取我发布的产品"""
-        products = self.get_queryset().filter(seller=request.user)
+        """获取我发布的产品（包含所有状态）"""
+        # 不使用 get_queryset()，直接查询所有状态的商品
+        products = Product.objects.filter(seller=request.user).select_related('seller', 'category', 'species').prefetch_related('images', 'videos')
         page = self.paginate_queryset(products)
         if page is not None:
             serializer = ProductListSerializer(page, many=True)
@@ -258,10 +259,14 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = ProductListSerializer(products, many=True)
         return Response(serializer.data)
     
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='toggle_status')
     def toggle_status(self, request, pk=None):
         """切换商品上下架状态"""
-        product = self.get_object()
+        # 不使用 get_object()，直接查询以避免 status 过滤
+        try:
+            product = Product.objects.get(pk=pk)
+        except Product.DoesNotExist:
+            return Response({'error': '商品不存在'}, status=status.HTTP_404_NOT_FOUND)
         
         # 验证权限
         if product.seller != request.user:
