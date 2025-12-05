@@ -3,6 +3,7 @@ Django==3.2.8
 djangorestframework==3.14.0
 django-cors-headers==3.13.0
 djangorestframework-simplejwt==5.2.2
+drf-yasg==1.21.7
 Pillow==9.3.0
 powerline-status==2.7
 PyMySQL==1.0.2
